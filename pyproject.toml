@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "varlociraptor-viz"
+version = "0.1.0"
+description = "Visualization functions for Varlociraptor VCF records"
+authors = [{name = "Christy", email = "christykanto1998@gmail.com"}]
+requires-python = ">=3.9"
+dependencies = [
+    "altair>=5.0.0",
+    "pandas>=2.0.0",
+    "pysam>=0.22.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]

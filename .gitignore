@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Pixi
+.pixi/
+
+# IDE
+.vscode/
+.idea/
+
+# Output
+*.html
+!examples/*.html
