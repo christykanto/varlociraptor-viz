@@ -22,20 +22,13 @@ def visualize_event_probabilities(record: pysam.VariantRecord) -> alt.Chart:
             phred_value = record.info[key]
             prob_fields[event_name] = phred_to_prob(phred_value)
     
-    if not prob_fields:
-        # No PROB fields found - create warning chart
-        df = pd.DataFrame({'Event': ['No PROB_* fields in VCF'], 'Probability': [0.5]})
-    else:
-        df = pd.DataFrame([
-            {'Event': event, 'Probability': prob}
-            for event, prob in prob_fields.items()
-        ])
+    df = pd.DataFrame([
+        {'Event': event, 'Probability': prob}
+        for event, prob in prob_fields.items()
+    ])
     
-    chart = alt.Chart(df).mark_bar(
-        color='steelblue',
-        size=50
-    ).encode(
-        x=alt.X('Event:N', title='Event', sort='-y', axis=alt.Axis(labelAngle=-45)),
+    chart = alt.Chart(df).mark_bar().encode(
+        x=alt.X('Event:N', title='Event', sort='-y'),
         y=alt.Y('Probability:Q', 
                 scale=alt.Scale(type='log'),
                 title='Probability (log scale)'),
@@ -56,15 +49,14 @@ def visualize_allele_frequency_distribution(
     """
     Visualize allele frequency distribution (AFD) for a sample.
     
-    FIXES APPLIED:
-    - ML point layered on top (larger, red)
-    - Y-axis removed
-    - Grid removed
+    FIX 1: ML point layered on top
+    FIX 2: Y-axis and grid removed
     """
     if sample_name is None:
         sample_name = list(record.samples.keys())[0]
     
     sample = record.samples[sample_name]
+    
     afd_string = sample.get('AFD', '')
     if not afd_string:
         raise ValueError(f"No AFD field found for sample {sample_name}")
@@ -93,11 +85,9 @@ def visualize_allele_frequency_distribution(
     else:
         df['is_ML'] = 'Other'
     
-    # FIX 1: Separate data for layering
     df_other = df[df['is_ML'] == 'Other']
     df_ml = df[df['is_ML'] == 'ML']
     
-    # FIX 1: Base layer (blue points)
     base_layer = alt.Chart(df_other).mark_circle(
         size=100,
         opacity=0.6
@@ -106,8 +96,8 @@ def visualize_allele_frequency_distribution(
                 title='Allele Frequency',
                 scale=alt.Scale(domain=[0, 1])),
         y=alt.Y('Probability:Q', 
-                title=None,    # FIX 2: No Y-axis title
-                axis=None),    # FIX 2: No Y-axis
+                title=None,
+                axis=None),
         color=alt.value('blue'),
         tooltip=[
             alt.Tooltip('Allele_Frequency:Q', format='.3f'),
@@ -115,7 +105,6 @@ def visualize_allele_frequency_distribution(
         ]
     )
     
-    # FIX 1: ML layer (red point on top)
     ml_layer = alt.Chart(df_ml).mark_circle(
         size=200,
         opacity=1.0
@@ -129,27 +118,27 @@ def visualize_allele_frequency_distribution(
         ]
     )
     
-    # FIX 1: Combine layers (ML on top)
     chart = (base_layer + ml_layer).properties(
         title=f'Allele Frequency Distribution - {sample_name} ({record.chrom}:{record.pos})',
         width=600,
         height=400
     ).configure_view(
-        strokeWidth=0  # FIX 2: No border
+        strokeWidth=0
     ).configure_axis(
-        grid=False     # FIX 2: No grid
+        grid=False
     )
     
     return chart
 
 
 def parse_obs_entry(obs_string: str):
-    """Parse a single OBS field entry (CBDTASOPXI format)."""
+    """Parse a single OBS field entry."""
     if not obs_string or len(obs_string) < 10:
         return None
     
     try:
         parts = list(obs_string)
+        
         return {
             'count': int(parts[0]),
             'direction': parts[1],
@@ -170,11 +159,21 @@ def parse_obs_entry(obs_string: str):
 def get_posterior_odds_value(direction: str, strength: str) -> float:
     """Convert Kass-Raftery score to numeric value."""
     strength_upper = strength.upper()
-    odds_map = {'N': 0.1, 'E': 1, 'B': 5, 'P': 30, 'S': 300, 'V': 3000}
+    
+    odds_map = {
+        'N': 0.1,
+        'E': 1,
+        'B': 5,
+        'P': 30,
+        'S': 300,
+        'V': 3000
+    }
+    
     base_odds = odds_map.get(strength_upper, 1)
     
     if direction == 'R':
         base_odds = -base_odds
+    
     if strength.islower():
         base_odds *= 0.7
     
@@ -185,18 +184,12 @@ def visualize_observations(
     record: pysam.VariantRecord, 
     sample_name: Optional[str] = None
 ) -> alt.Chart:
-    """
-    Visualize observations (OBS field) separated by REF and ALT alleles.
-    
-    FIX 3: Full implementation with:
-    - Multiple bars (Posterior Odds, Edit Distance, Strand, Softclip, Indel)
-    - Color coding by category
-    - REF vs ALT separation
-    """
+    """Visualize observations (OBS field) separated by REF and ALT alleles."""
     if sample_name is None:
         sample_name = list(record.samples.keys())[0]
     
     sample = record.samples[sample_name]
+    
     obs_string = sample.get('OBS', '')
     if not obs_string:
         raise ValueError(f"No OBS field found for sample {sample_name}")
@@ -219,10 +212,10 @@ def visualize_observations(
     
     def create_panel_data(data, allele):
         rows = []
+        
         for i, obs in enumerate(data):
             obs_id = f"{allele}_{i}"
             
-            # Bar 1: Posterior odds
             odds_value = get_posterior_odds_value(obs['direction'], obs['strength'])
             rows.append({
                 'Observation': obs_id,
@@ -233,7 +226,6 @@ def visualize_observations(
                 'Allele': allele
             })
             
-            # Bar 2: Edit distance
             if obs['edit_distance'] != '.':
                 try:
                     edit_dist = int(obs['edit_distance'])
@@ -248,7 +240,6 @@ def visualize_observations(
                 except ValueError:
                     pass
             
-            # Bar 3: Strand
             strand_map = {'+': 1, '-': 1, '*': 1, '.': 0}
             rows.append({
                 'Observation': obs_id,
@@ -259,7 +250,6 @@ def visualize_observations(
                 'Allele': allele
             })
             
-            # Bar 4: Softclip
             softclip_val = 1 if obs['softclip'] == '$' else 0
             rows.append({
                 'Observation': obs_id,
@@ -270,7 +260,6 @@ def visualize_observations(
                 'Allele': allele
             })
             
-            # Bar 5: Indel
             indel_val = 1 if obs['indel'] == '*' else 0
             rows.append({
                 'Observation': obs_id,
@@ -285,17 +274,24 @@ def visualize_observations(
     
     df_ref = create_panel_data(ref_data, 'REF')
     df_alt = create_panel_data(alt_data, 'ALT')
+    
     df = pd.concat([df_ref, df_alt], ignore_index=True)
     
     if df.empty:
         return alt.Chart(pd.DataFrame()).mark_bar()
     
     chart = alt.Chart(df).mark_bar().encode(
-        x=alt.X('Observation:N', title='Observation', axis=alt.Axis(labels=False)),
-        y=alt.Y('Value:Q', title='Value'),
-        color=alt.Color('Category:N', title='Category'),
-        column=alt.Column('Attribute:N', title=None),
-        row=alt.Row('Allele:N', title='Allele Type'),
+        x=alt.X('Observation:N', 
+                title='Observation', 
+                axis=alt.Axis(labels=False)),
+        y=alt.Y('Value:Q', 
+                title='Value'),
+        color=alt.Color('Category:N', 
+                       title='Category'),
+        column=alt.Column('Attribute:N', 
+                         title=None),
+        row=alt.Row('Allele:N', 
+                   title='Allele Type'),
         tooltip=['Observation', 'Attribute', 'Value', 'Count', 'Category', 'Allele']
     ).properties(
         width=150,
