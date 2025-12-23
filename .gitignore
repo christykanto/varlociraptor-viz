@@ -16,3 +16,16 @@ htmlcov/
 # Output
 *.html
 !examples/*.html
+
+# Backup files
+*.backup
+*.backup.*
+
+# Pixi lock file
+pixi.lock
+
+# Python egg-info
+*.egg-info/
+
+# Unknown files
+main
