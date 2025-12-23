@@ -1,5 +1,3 @@
-"""Core visualization functions for Varlociraptor VCF records."""
-
 import altair as alt
 import pandas as pd
 from typing import Optional
@@ -7,14 +5,12 @@ import pysam
 
 
 def phred_to_prob(phred_value):
-    """Convert PHRED-scaled value to probability."""
     if isinstance(phred_value, (tuple, list)):
         phred_value = phred_value[0]
     return 10 ** (-phred_value / 10)
 
 
 def visualize_event_probabilities(record: pysam.VariantRecord) -> alt.Chart:
-    """Visualize event probabilities from INFO fields starting with PROB_."""
     prob_fields = {}
     for key in record.info:
         if key.startswith('PROB_'):
@@ -52,14 +48,7 @@ def visualize_allele_frequency_distribution(
     record: pysam.VariantRecord, 
     sample_name: Optional[str] = None
 ) -> alt.Chart:
-    """
-    Visualize allele frequency distribution (AFD) for a sample.
-    
-    Professor's requirements:
-    1. ML point displayed ON TOP using layering
-    2. Y-axis removed (density values not meaningful)
-    3. Grid removed
-    """
+id removed
     if sample_name is None:
         sample_name = list(record.samples.keys())[0]
     
@@ -98,11 +87,9 @@ def visualize_allele_frequency_distribution(
     else:
         df['is_ML'] = False
     
-    # Separate into two dataframes for layering
     df_other = df[df['is_ML'] == False].copy()
     df_ml = df[df['is_ML'] == True].copy()
     
-    # LAYER 1: Base layer with non-ML points (blue, smaller, drawn first)
     base_layer = alt.Chart(df_other).mark_circle(
         size=100,
         color='blue',
@@ -114,14 +101,13 @@ def visualize_allele_frequency_distribution(
                 scale=alt.Scale(domain=[0, 1]),
                 axis=alt.Axis(grid=False)),
         y=alt.Y('Probability:Q', 
-                axis=None),  # NO Y-AXIS as requested
+                axis=None),  
         tooltip=[
             alt.Tooltip('Allele_Frequency:Q', format='.3f', title='Frequency'),
             alt.Tooltip('Probability:Q', format='.6f', title='Probability')
         ]
     )
     
-    # LAYER 2: ML layer (red, larger, drawn ON TOP)
     if not df_ml.empty:
         ml_layer = alt.Chart(df_ml).mark_circle(
             size=400,      # Much larger
@@ -139,20 +125,18 @@ def visualize_allele_frequency_distribution(
             ]
         )
         
-        # SUPERPOSITION: Layer ML on top of base
         combined_chart = (base_layer + ml_layer)
     else:
         combined_chart = base_layer
     
-    # Configure chart (remove grid as requested)
     final_chart = combined_chart.properties(
         title=f'Allele Frequency Distribution - {sample_name} ({record.chrom}:{record.pos})',
         width=600,
         height=400
     ).configure_view(
-        strokeWidth=0  # No border
+        strokeWidth=0 
     ).configure_axis(
-        grid=False     # NO GRID as requested
+        grid=False     
     )
     
     return final_chart
@@ -170,15 +154,15 @@ def parse_obs_entry(obs_string: str):
         parts = list(obs_string)
         return {
             'count': int(parts[0]),
-            'direction': parts[1],      # 'A' = ALT, 'R' = REF
-            'strength': parts[2],        # B, P, S, V (Kass-Raftery)
+            'direction': parts[1],     
+            'strength': parts[2],      
             'edit_distance': parts[3],
             'alignment_type': parts[4],
             'alt_locus': parts[5],
-            'strand': parts[6],          # +, -, *
+            'strand': parts[6],         
             'orientation': parts[7],
             'read_position': parts[8],
-            'softclip': parts[9],        # $, .
+            'softclip': parts[9],       
             'indel': parts[10] if len(parts) > 10 else '.'
         }
     except (ValueError, IndexError):
@@ -186,26 +170,23 @@ def parse_obs_entry(obs_string: str):
 
 
 def get_posterior_odds_value(direction: str, strength: str) -> float:
-    """Convert Kass-Raftery score to numeric value."""
     strength_upper = strength.upper()
     
-    # Kass-Raftery mapping
     odds_map = {
-        'N': 0.1,    # None
-        'E': 1,      # Equal
-        'B': 5,      # Barely
-        'P': 30,     # Positive
-        'S': 300,    # Strong
-        'V': 3000    # Very strong
+        'N': 0.1,    
+        'E': 1,      
+        'B': 5,      
+        'P': 30,     
+        'S': 300,    
+        'V': 3000    
     }
     
     base_odds = odds_map.get(strength_upper, 1)
     
-    # Direction affects sign
+   
     if direction == 'R':
         base_odds = -base_odds
     
-    # Lowercase indicates low mapping quality
     if strength.islower():
         base_odds *= 0.7
     
@@ -216,14 +197,7 @@ def visualize_observations(
     record: pysam.VariantRecord, 
     sample_name: Optional[str] = None
 ) -> alt.Chart:
-    """
-    Visualize observations (OBS field) separated by REF and ALT alleles.
-    
-    Professor's requirements:
-    1. Multiple bars (not just count)
-    2. Coloring by category
-    3. Distinguish between REF and ALT
-    """
+   
     if sample_name is None:
         sample_name = list(record.samples.keys())[0]
     
@@ -252,13 +226,11 @@ def visualize_observations(
     
     # Create data for visualization
     def create_viz_data(observations, allele_type):
-        """Create rows for multiple bar attributes."""
         rows = []
         
         for i, obs in enumerate(observations):
             obs_id = f"{allele_type}_{i+1}"
             
-            # Attribute 1: Posterior Odds
             odds = get_posterior_odds_value(obs['direction'], obs['strength'])
             rows.append({
                 'Observation_ID': obs_id,
@@ -268,7 +240,6 @@ def visualize_observations(
                 'Category': f"{obs['direction']}{obs['strength']}"
             })
             
-            # Attribute 2: Edit Distance
             if obs['edit_distance'] not in ['.', '*']:
                 try:
                     edit_dist = int(obs['edit_distance'])
@@ -282,7 +253,6 @@ def visualize_observations(
                 except ValueError:
                     pass
             
-            # Attribute 3: Strand
             strand_value = 1 if obs['strand'] in ['+', '-'] else 0
             rows.append({
                 'Observation_ID': obs_id,
@@ -292,7 +262,6 @@ def visualize_observations(
                 'Category': f"Strand_{obs['strand']}"
             })
             
-            # Attribute 4: Softclip
             softclip_value = 1 if obs['softclip'] == '$' else 0
             rows.append({
                 'Observation_ID': obs_id,
@@ -302,7 +271,6 @@ def visualize_observations(
                 'Category': f"Softclip_{obs['softclip']}"
             })
             
-            # Attribute 5: Indel
             indel_value = 1 if obs['indel'] == '*' else 0
             rows.append({
                 'Observation_ID': obs_id,
@@ -314,7 +282,6 @@ def visualize_observations(
         
         return rows
     
-    # Combine REF and ALT data
     all_rows = []
     all_rows.extend(create_viz_data(ref_observations, 'REF'))
     all_rows.extend(create_viz_data(alt_observations, 'ALT'))
@@ -324,19 +291,18 @@ def visualize_observations(
     if df.empty:
         return alt.Chart(pd.DataFrame()).mark_bar()
     
-    # Create faceted chart with COLORING and REF/ALT separation
     chart = alt.Chart(df).mark_bar().encode(
         x=alt.X('Observation_ID:N', 
                 title='Observation',
                 axis=alt.Axis(labels=False, ticks=False)),
         y=alt.Y('Value:Q', 
                 title='Value'),
-        color=alt.Color('Category:N',           # COLORING by category
+        color=alt.Color('Category:N',           
                        title='Category',
                        legend=alt.Legend(orient='right')),
-        column=alt.Column('Attribute:N',        # MULTIPLE BARS (columns)
+        column=alt.Column('Attribute:N',       
                          title='Attribute Type'),
-        row=alt.Row('Allele:N',                 # REF vs ALT (rows)
+        row=alt.Row('Allele:N',                
                    title='Allele Type'),
         tooltip=['Observation_ID', 'Allele', 'Attribute', 'Value', 'Category']
     ).properties(
