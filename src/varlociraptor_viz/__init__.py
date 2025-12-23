@@ -1,4 +1,3 @@
-"""Visualization functions for Varlociraptor VCF records."""
 
 from .visualizations import (
     visualize_event_probabilities,
