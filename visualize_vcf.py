@@ -117,22 +117,19 @@ def visualize_observations(record, sample_name):
     """
     Visualize observations from OBS field
     Two panels: REF allele (left) and ALT allele (right)
-    Each panel shows multiple metrics (Posterior Odds, Edit Distance, etc.) as separate stacked bars
+    Each metric bar is normalized to 100% showing proportion of each observation
     """
     sample = record.samples[sample_name]
     obs = sample['OBS']
     
-    # Handle if OBS is a tuple or list
     if isinstance(obs, (tuple, list)):
         obs_string = obs[0] if obs else ""
     else:
         obs_string = obs
     
-    # Parse the OBS field
-    ref_data = []
-    alt_data = []
+    ref_observations = []
+    alt_observations = []
     
-    # Pattern: COUNT + 2-letter-odds + 8 more chars (D,T,A,S,O,P,X,I)
     pattern = r'(\d+)([a-zA-Z]{2})(.{8})'
     matches = re.findall(pattern, obs_string)
     
@@ -141,101 +138,91 @@ def visualize_observations(record, sample_name):
         odds_code = match[1]
         rest = match[2]
         
-        # Parse the 8 characters
-        edit_distance = rest[0]  # D
-        alignment_type = rest[1]  # T
-        alt_locus = rest[2]  # A
-        strand = rest[3]  # S
-        orientation = rest[4]  # O
-        read_position = rest[5]  # P
-        softclip = rest[6]  # X
-        indel = rest[7]  # I
+        edit_distance_char = rest[0]
+        alignment_type = rest[1]
+        alt_locus = rest[2]
+        strand = rest[3]
+        orientation = rest[4]
+        read_position = rest[5]
+        softclip = rest[6]
+        indel = rest[7]
         
-        # Determine allele type
         allele_type = odds_code[0].upper()
         kass_raftery = odds_code[1]
         
-        # Convert Kass Raftery score to approximate posterior odds
         kr_map = {
             'N': 0.0, 'E': 1.0, 'B': 3.0, 'P': 10.0, 'S': 20.0, 'V': 150.0,
             'n': 0.0, 'e': 0.5, 'b': 1.5, 'p': 5.0, 's': 10.0, 'v': 75.0
         }
         posterior_odds = kr_map.get(kass_raftery, 1.0)
         
-        # Get edit distance value
-        edit_dist_val = int(edit_distance) if edit_distance.isdigit() else 0
+        edit_dist_val = int(edit_distance_char) if edit_distance_char.isdigit() else 0
         
-        obs_dict = {
-            'Observation': str(idx),  # Convert to string for categorical coloring
+        obs_entry = {
+            'obs_id': f'obs_{idx}',
+            'count': count,
             'Posterior Odds': posterior_odds,
             'Edit Distance': edit_dist_val,
-            'Count': count,
-            'Strand': 1 if strand == '+' else (-1 if strand == '-' else 0),
-            'Orientation': 1 if orientation == '>' else (-1 if orientation == '<' else 0)
+            'Strand': 1,
+            'Orientation': 1,
+            'Read Position': 1,
+            'Softclip': 1,
+            'Indel': 1
         }
         
         if allele_type == 'A':
-            alt_data.append(obs_dict)
+            alt_observations.append(obs_entry)
         else:
-            ref_data.append(obs_dict)
+            ref_observations.append(obs_entry)
     
-    # Create dataframes
-    df_ref = pd.DataFrame(ref_data)
-    df_alt = pd.DataFrame(alt_data)
-    
-    # Create REF panel (left)
-    if not df_ref.empty:
-        # Melt for all metrics
-        ref_long = df_ref.melt(
-            id_vars=['Observation'],
-            value_vars=['Posterior Odds', 'Edit Distance', 'Strand', 'Orientation'],
-            var_name='Metric',
-            value_name='Value'
-        )
+    def create_panel(observations, title):
+        if not observations:
+            return alt.Chart(pd.DataFrame({'text': [f'No {title} observations']})).mark_text(
+                text=f'No {title} observations', size=16
+            ).encode().properties(width=500, height=400, title=title)
         
-        ref_chart = alt.Chart(ref_long).mark_bar().encode(
+        all_data = []
+        for obs in observations:
+            obs_id = obs['obs_id']
+            count = obs['count']
+            
+            metrics = ['Posterior Odds', 'Edit Distance', 'Strand', 'Orientation', 
+                      'Read Position', 'Softclip', 'Indel']
+            
+            for metric in metrics:
+                if metric in ['Posterior Odds', 'Edit Distance']:
+                    value = obs[metric] * count
+                else:
+                    value = count
+                
+                all_data.append({
+                    'Observation': obs_id,
+                    'Metric': metric,
+                    'Value': value
+                })
+        
+        df = pd.DataFrame(all_data)
+        
+        # Use normalize stack to make all bars same height
+        chart = alt.Chart(df).mark_bar().encode(
             x=alt.X('Metric:N', title=None, axis=alt.Axis(labelAngle=-45)),
-            y=alt.Y('Value:Q', title='Value', stack='zero'),
-            color=alt.Color('Observation:N', legend=alt.Legend(title='Observation')),
+            y=alt.Y('Value:Q', title='Proportion', stack='normalize'),  # Changed to 'normalize'
+            color=alt.Color('Observation:N', 
+                          legend=alt.Legend(title='Observation'),
+                          scale=alt.Scale(scheme='tableau20')),
             order=alt.Order('Observation:N'),
             tooltip=['Observation:N', 'Metric:N', 'Value:Q']
         ).properties(
-            title='REF Allele Observations',
-            width=400,
+            title=title,
+            width=500,
             height=400
-        )
-    else:
-        ref_chart = alt.Chart(pd.DataFrame({'text': ['No REF observations']})).mark_text(
-            text='No REF observations', size=16
-        ).encode().properties(width=400, height=400)
-    
-    # Create ALT panel (right)
-    if not df_alt.empty:
-        # Melt for all metrics
-        alt_long = df_alt.melt(
-            id_vars=['Observation'],
-            value_vars=['Posterior Odds', 'Edit Distance', 'Strand', 'Orientation'],
-            var_name='Metric',
-            value_name='Value'
         )
         
-        alt_chart = alt.Chart(alt_long).mark_bar().encode(
-            x=alt.X('Metric:N', title=None, axis=alt.Axis(labelAngle=-45)),
-            y=alt.Y('Value:Q', title='Value', stack='zero'),
-            color=alt.Color('Observation:N', legend=alt.Legend(title='Observation')),
-            order=alt.Order('Observation:N'),
-            tooltip=['Observation:N', 'Metric:N', 'Value:Q']
-        ).properties(
-            title='ALT Allele Observations',
-            width=400,
-            height=400
-        )
-    else:
-        alt_chart = alt.Chart(pd.DataFrame({'text': ['No ALT observations']})).mark_text(
-            text='No ALT observations', size=16
-        ).encode().properties(width=400, height=400)
+        return chart
     
-    # Combine panels side by side
+    ref_chart = create_panel(ref_observations, 'REF Allele Observations')
+    alt_chart = create_panel(alt_observations, 'ALT Allele Observations')
+    
     combined = alt.hconcat(ref_chart, alt_chart)
     
     return combined
@@ -243,6 +230,7 @@ def visualize_observations(record, sample_name):
 if __name__ == "__main__":
     # Open the VCF file
     vcf_file = "examples/example.vcf"
+    
     vcf = pysam.VariantFile(vcf_file)
     
     # Get the first record
@@ -258,7 +246,10 @@ if __name__ == "__main__":
     print("\nGenerating event probabilities chart...")
     chart1 = visualize_event_probabilities(record)
     chart1.save('event_probabilities.html')
+    chart1.save('event_probabilities.vl.json')  # Save as Vega-Lite JSON
     print("Saved: event_probabilities.html")
+    print("Saved: event_probabilities.vl.json")
+
     
     print("\nGenerating allele frequency distribution chart...")
     chart2 = visualize_allele_frequency_distribution(record, sample_name)
