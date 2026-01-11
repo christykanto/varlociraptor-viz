@@ -14,22 +14,30 @@ def visualize_event_probabilities(record):
     """
     Visualize event probabilities from INFO column (PROB_* fields)
     """
-    # Extract all PROB_ fields from INFO
     prob_data = []
     for key, value in record.info.items():
         if key.startswith('PROB_'):
             event_name = key.replace('PROB_', '')
-            probability = phred_to_prob(value)
+            
+            # Handle inf values
+            if value == float('inf'):
+                probability = 0.0
+            else:
+                probability = phred_to_prob(value)
+            
             prob_data.append({'Event': event_name, 'Probability': probability})
     
-    # Create DataFrame
     df = pd.DataFrame(prob_data)
     
-    # Create bar plot with log scale
+    print(f"\n=== Event Probabilities ===")
+    print(df)
+    print(f"Sum of probabilities: {df['Probability'].sum()}")
+    
+    # Create bar plot WITHOUT log scale
     chart = alt.Chart(df).mark_bar().encode(
         x=alt.X('Event:N', title='Event Type'),
-        y=alt.Y('Probability:Q', scale=alt.Scale(type='log'), title='Probability (log scale)'),
-        tooltip=['Event', 'Probability']
+        y=alt.Y('Probability:Q', title='Probability'),  # Removed log scale
+        tooltip=['Event', alt.Tooltip('Probability:Q', format='.6f')]
     ).properties(
         title='Event Probabilities',
         width=400,
@@ -37,7 +45,7 @@ def visualize_event_probabilities(record):
     )
     
     return chart
-
+    
 def visualize_allele_frequency_distribution(record, sample_name):
     """
     Visualize allele frequency distribution (AFD field)
@@ -117,7 +125,7 @@ def visualize_observations(record, sample_name):
     """
     Visualize observations from OBS field
     Two panels: REF allele (left) and ALT allele (right)
-    Each metric bar is normalized to 100% showing proportion of each observation
+    Each metric has a stacked bar with same total height, consistent stacking order
     """
     sample = record.samples[sample_name]
     obs = sample['OBS']
@@ -150,24 +158,27 @@ def visualize_observations(record, sample_name):
         allele_type = odds_code[0].upper()
         kass_raftery = odds_code[1]
         
-        kr_map = {
-            'N': 0.0, 'E': 1.0, 'B': 3.0, 'P': 10.0, 'S': 20.0, 'V': 150.0,
-            'n': 0.0, 'e': 0.5, 'b': 1.5, 'p': 5.0, 's': 10.0, 'v': 75.0
+        # Map Kass Raftery to descriptive names
+        kr_names = {
+            'N': 'None', 'E': 'Equal', 'B': 'Barely', 'P': 'Positive', 
+            'S': 'Strong', 'V': 'Very Strong',
+            'n': 'none', 'e': 'equal', 'b': 'barely', 'p': 'positive',
+            's': 'strong', 'v': 'very strong'
         }
-        posterior_odds = kr_map.get(kass_raftery, 1.0)
+        kr_name = kr_names.get(kass_raftery, kass_raftery)
         
         edit_dist_val = int(edit_distance_char) if edit_distance_char.isdigit() else 0
         
         obs_entry = {
-            'obs_id': f'obs_{idx}',
+            'obs_index': idx,  # Preserve original order for stacking
             'count': count,
-            'Posterior Odds': posterior_odds,
-            'Edit Distance': edit_dist_val,
-            'Strand': 1,
-            'Orientation': 1,
-            'Read Position': 1,
-            'Softclip': 1,
-            'Indel': 1
+            'Posterior Odds': kr_name,  # Category for coloring
+            'Edit Distance': str(edit_dist_val),  # Category for coloring
+            'Strand': strand,  # +/- for coloring
+            'Orientation': orientation,  # >/</*/! for coloring
+            'Read Position': read_position,  # ^/* for coloring
+            'Softclip': softclip,  # $/. for coloring
+            'Indel': indel  # */. for coloring
         }
         
         if allele_type == 'A':
@@ -179,42 +190,41 @@ def visualize_observations(record, sample_name):
         if not observations:
             return alt.Chart(pd.DataFrame({'text': [f'No {title} observations']})).mark_text(
                 text=f'No {title} observations', size=16
-            ).encode().properties(width=500, height=400, title=title)
+            ).encode().properties(width=600, height=400, title=title)
+        
+        # Create data for each metric
+        metrics = ['Posterior Odds', 'Edit Distance', 'Strand', 'Orientation', 
+                  'Read Position', 'Softclip', 'Indel']
         
         all_data = []
         for obs in observations:
-            obs_id = obs['obs_id']
+            obs_index = obs['obs_index']
             count = obs['count']
             
-            metrics = ['Posterior Odds', 'Edit Distance', 'Strand', 'Orientation', 
-                      'Read Position', 'Softclip', 'Indel']
-            
             for metric in metrics:
-                if metric in ['Posterior Odds', 'Edit Distance']:
-                    value = obs[metric] * count
-                else:
-                    value = count
+                category_value = obs[metric]
                 
                 all_data.append({
-                    'Observation': obs_id,
+                    'obs_index': obs_index,  # For consistent ordering
                     'Metric': metric,
-                    'Value': value
+                    'Count': count,
+                    'Category': category_value  # The value to color by
                 })
         
         df = pd.DataFrame(all_data)
         
-        # Use normalize stack to make all bars same height
+        # Create stacked bar chart with different colors per metric
         chart = alt.Chart(df).mark_bar().encode(
             x=alt.X('Metric:N', title=None, axis=alt.Axis(labelAngle=-45)),
-            y=alt.Y('Value:Q', title='Proportion', stack='normalize'),  # Changed to 'normalize'
-            color=alt.Color('Observation:N', 
-                          legend=alt.Legend(title='Observation'),
+            y=alt.Y('Count:Q', title='Count', stack='zero'),
+            color=alt.Color('Category:N', 
+                          legend=alt.Legend(title='Category'),
                           scale=alt.Scale(scheme='tableau20')),
-            order=alt.Order('Observation:N'),
-            tooltip=['Observation:N', 'Metric:N', 'Value:Q']
+            order=alt.Order('obs_index:Q'),  # Consistent stacking order
+            tooltip=['obs_index:Q', 'Metric:N', 'Category:N', 'Count:Q']
         ).properties(
             title=title,
-            width=500,
+            width=600,
             height=400
         )
         
@@ -226,6 +236,7 @@ def visualize_observations(record, sample_name):
     combined = alt.hconcat(ref_chart, alt_chart)
     
     return combined
+    
 # Main execution
 if __name__ == "__main__":
     # Open the VCF file
