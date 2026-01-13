@@ -114,122 +114,93 @@ def visualize_allele_frequency_distribution(record, sample_name):
 def visualize_observations(record, sample_name):
     """
     Visualize observations from OBS field
-    Two panels: REF allele (left) and ALT allele (right)
-    Each observation has one color, consistent across all metric bars
+    Two panels: REF allele (top) and ALT allele (bottom)
+    Each metric has its own legend and color meaning
     """
     sample = record.samples[sample_name]
     obs = sample['OBS']
-    
-    if isinstance(obs, (tuple, list)):
-        obs_string = obs[0] if obs else ""
-    else:
-        obs_string = obs
-    
+
+    obs_string = obs[0] if isinstance(obs, (tuple, list)) else obs
+
     ref_observations = []
     alt_observations = []
-    
+
     pattern = r'(\d+)([a-zA-Z]{2})(.{8})'
     matches = re.findall(pattern, obs_string)
-    
+
     for idx, match in enumerate(matches):
         count = int(match[0])
         odds_code = match[1]
         rest = match[2]
-        
-        edit_distance_char = rest[0]
-        alignment_type = rest[1]
-        alt_locus = rest[2]
-        strand = rest[3]
-        orientation = rest[4]
-        read_position = rest[5]
-        softclip = rest[6]
-        indel = rest[7]
-        
+
         allele_type = odds_code[0].upper()
-        kass_raftery = odds_code[1]
-        
-        # Map Kass Raftery to descriptive names
-        kr_names = {
-            'N': 'None', 'E': 'Equal', 'B': 'Barely', 'P': 'Positive', 
-            'S': 'Strong', 'V': 'Very Strong',
-            'n': 'none', 'e': 'equal', 'b': 'barely', 'p': 'positive',
-            's': 'strong', 'v': 'very strong'
+        kass = odds_code[1]
+
+        kr_map = {
+            'N': 'None', 'E': 'Equal', 'B': 'Barely',
+            'P': 'Positive', 'S': 'Strong', 'V': 'Very Strong',
+            'n': 'none', 'e': 'equal', 'b': 'barely',
+            'p': 'positive', 's': 'strong', 'v': 'very strong'
         }
-        kr_name = kr_names.get(kass_raftery, kass_raftery)
-        
-        edit_dist_val = int(edit_distance_char) if edit_distance_char.isdigit() else 0
-        
-        # Create a descriptive label for this observation
-        obs_label = f"{count}{odds_code}"
-        
+
         obs_entry = {
-            'obs_index': idx,
-            'obs_label': obs_label,
-            'count': count,
-            'Posterior Odds': kr_name,
-            'Edit Distance': str(edit_dist_val),
-            'Strand': strand,
-            'Orientation': orientation,
-            'Read Position': read_position,
-            'Softclip': softclip,
-            'Indel': indel
+            'Count': count,
+            'Posterior Odds': kr_map.get(kass, kass),
+            'Edit Distance': rest[0],
+            'Strand': rest[3],
+            'Orientation': rest[4],
+            'Read Position': rest[5],
+            'Softclip': rest[6],
+            'Indel': rest[7]
         }
-        
+
         if allele_type == 'A':
             alt_observations.append(obs_entry)
         else:
             ref_observations.append(obs_entry)
-    
+
     def create_panel(observations, title):
         if not observations:
-            return alt.Chart(pd.DataFrame({'text': [f'No {title} observations']})).mark_text(
-                text=f'No {title} observations', size=16
-            ).encode().properties(width=600, height=400, title=title)
-        
-        metrics = ['Posterior Odds', 'Edit Distance', 'Strand', 'Orientation', 
-                  'Read Position', 'Softclip', 'Indel']
-        
-        all_data = []
-        for obs in observations:
-            obs_index = obs['obs_index']
-            obs_label = obs['obs_label']
-            count = obs['count']
-            
-            for metric in metrics:
-                category_value = obs[metric]
-                
-                all_data.append({
-                    'obs_index': obs_index,
-                    'obs_label': obs_label,
-                    'Metric': metric,
-                    'Count': count,
-                    'Category': category_value
-                })
-        
-        df = pd.DataFrame(all_data)
-        
-        chart = alt.Chart(df).mark_bar().encode(
-            x=alt.X('Metric:N', title=None, axis=alt.Axis(labelAngle=-45)),
-            y=alt.Y('Count:Q', title='Count', stack='zero'),
-            color=alt.Color('obs_label:N', 
-                          legend=alt.Legend(title='Observation'),
-                          scale=alt.Scale(scheme='tableau20')),
-            order=alt.Order('obs_index:Q'),
-            tooltip=['obs_label:N', 'Metric:N', 'Category:N', 'Count:Q']
-        ).properties(
-            title=title,
-            width=600,
-            height=400
-        )
-        
-        return chart
-    
+            return alt.Chart(pd.DataFrame({'x': []})).mark_text(
+                text=f'No {title} observations'
+            )
+
+        metrics = [
+            'Posterior Odds', 'Edit Distance', 'Strand',
+            'Orientation', 'Read Position', 'Softclip', 'Indel'
+        ]
+
+        charts = []
+
+        for metric in metrics:
+            df = pd.DataFrame([
+                {'Metric': metric, 'Category': obs[metric], 'Count': obs['Count']}
+                for obs in observations
+            ])
+
+            chart = alt.Chart(df).mark_bar().encode(
+                x=alt.X('Metric:N', axis=alt.Axis(labels=False)),
+                y=alt.Y('sum(Count):Q', title='Count'),
+                color=alt.Color(
+                    'Category:N',
+                    title=metric,        # ← LEGEND TITLE IS MEANINGFUL
+                    legend=alt.Legend(orient='right')
+                ),
+                tooltip=['Category:N', 'sum(Count):Q']
+            ).properties(
+                width=90,
+                height=350,
+                title=metric
+            )
+
+            charts.append(chart)
+
+        return alt.hconcat(*charts).properties(title=title)
+
     ref_chart = create_panel(ref_observations, 'REF Allele Observations')
     alt_chart = create_panel(alt_observations, 'ALT Allele Observations')
-    
-    combined = alt.hconcat(ref_chart, alt_chart)
-    
-    return combined
+
+    return alt.vconcat(ref_chart, alt_chart)
 
 # Main execution
 if __name__ == "__main__":
