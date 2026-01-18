@@ -114,93 +114,130 @@ def visualize_allele_frequency_distribution(record, sample_name):
 def visualize_observations(record, sample_name):
     """
     Visualize observations from OBS field
-    Two panels: REF allele (top) and ALT allele (bottom)
-    Each metric has its own legend and color meaning
+    REF and ALT side-by-side with normalized heights for comparison
     """
     sample = record.samples[sample_name]
     obs = sample['OBS']
-
-    obs_string = obs[0] if isinstance(obs, (tuple, list)) else obs
-
+    
+    if isinstance(obs, (tuple, list)):
+        obs_string = obs[0] if obs else ""
+    else:
+        obs_string = obs
+    
     ref_observations = []
     alt_observations = []
-
+    
     pattern = r'(\d+)([a-zA-Z]{2})(.{8})'
     matches = re.findall(pattern, obs_string)
-
+    
     for idx, match in enumerate(matches):
         count = int(match[0])
         odds_code = match[1]
         rest = match[2]
-
+        
+        edit_distance_char = rest[0]
+        alignment_type = rest[1]
+        alt_locus = rest[2]
+        strand = rest[3]
+        orientation = rest[4]
+        read_position = rest[5]
+        softclip = rest[6]
+        indel = rest[7]
+        
         allele_type = odds_code[0].upper()
-        kass = odds_code[1]
-
-        kr_map = {
-            'N': 'None', 'E': 'Equal', 'B': 'Barely',
-            'P': 'Positive', 'S': 'Strong', 'V': 'Very Strong',
-            'n': 'none', 'e': 'equal', 'b': 'barely',
-            'p': 'positive', 's': 'strong', 'v': 'very strong'
+        kass_raftery = odds_code[1]
+        
+        # Normalize case for Kass Raftery scores
+        kr_names = {
+            'N': 'None', 'E': 'Equal', 'B': 'Barely', 'P': 'Positive', 
+            'S': 'Strong', 'V': 'Very Strong',
+            'n': 'None', 'e': 'Equal', 'b': 'Barely', 'p': 'Positive',
+            's': 'Strong', 'v': 'Very Strong'
         }
-
+        kr_name = kr_names.get(kass_raftery, kass_raftery)
+        
+        edit_dist_val = int(edit_distance_char) if edit_distance_char.isdigit() else 0
+        
         obs_entry = {
-            'Count': count,
-            'Posterior Odds': kr_map.get(kass, kass),
-            'Edit Distance': rest[0],
-            'Strand': rest[3],
-            'Orientation': rest[4],
-            'Read Position': rest[5],
-            'Softclip': rest[6],
-            'Indel': rest[7]
+            'obs_index': idx,
+            'count': count,
+            'Posterior Odds': kr_name,
+            'Edit Distance': str(edit_dist_val),
+            'Strand': strand,
+            'Orientation': orientation,
+            'Read Position': read_position,
+            'Softclip': softclip,
+            'Indel': indel
         }
-
+        
         if allele_type == 'A':
             alt_observations.append(obs_entry)
         else:
             ref_observations.append(obs_entry)
-
-    def create_panel(observations, title):
-        if not observations:
-            return alt.Chart(pd.DataFrame({'x': []})).mark_text(
-                text=f'No {title} observations'
-            )
-
-        metrics = [
-            'Posterior Odds', 'Edit Distance', 'Strand',
-            'Orientation', 'Read Position', 'Softclip', 'Indel'
-        ]
-
-        charts = []
-
+    
+    def create_combined_panel(ref_obs, alt_obs):
+        """Create side-by-side REF and ALT panels with normalized heights"""
+        
+        metrics = ['Posterior Odds', 'Edit Distance', 'Strand', 'Orientation', 
+                  'Read Position', 'Softclip', 'Indel']
+        
+        all_charts = []
+        
         for metric in metrics:
-            df = pd.DataFrame([
-                {'Metric': metric, 'Category': obs[metric], 'Count': obs['Count']}
-                for obs in observations
-            ])
-
+            # Prepare data for both REF and ALT
+            ref_data = []
+            alt_data = []
+            
+            if ref_obs:
+                for obs in ref_obs:
+                    ref_data.append({
+                        'obs_index': obs['obs_index'],
+                        'Allele': 'REF',
+                        'Count': obs['count'],
+                        'Category': obs[metric]
+                    })
+            
+            if alt_obs:
+                for obs in alt_obs:
+                    alt_data.append({
+                        'obs_index': obs['obs_index'],
+                        'Allele': 'ALT',
+                        'Count': obs['count'],
+                        'Category': obs[metric]
+                    })
+            
+            # Combine both
+            combined_data = ref_data + alt_data
+            df = pd.DataFrame(combined_data)
+            
+            if df.empty:
+                continue
+            
+            # Create chart with NORMALIZED stacking (same height for both)
             chart = alt.Chart(df).mark_bar().encode(
-                x=alt.X('Metric:N', axis=alt.Axis(labels=False)),
-                y=alt.Y('sum(Count):Q', title='Count'),
-                color=alt.Color(
-                    'Category:N',
-                    title=metric,        # ← LEGEND TITLE IS MEANINGFUL
-                    legend=alt.Legend(orient='right')
-                ),
-                tooltip=['Category:N', 'sum(Count):Q']
+                x=alt.X('Allele:N', title=None),
+                y=alt.Y('Count:Q', title='Proportion', stack='normalize'),  # Changed to normalize
+                color=alt.Color('Category:N', 
+                              legend=alt.Legend(title=metric)),
+                order=alt.Order('obs_index:Q'),
+                tooltip=['Allele:N', 'Category:N', 'Count:Q']
             ).properties(
-                width=90,
-                height=350,
+                width=150,
+                height=400,
                 title=metric
             )
-
-            charts.append(chart)
-
-        return alt.hconcat(*charts).properties(title=title)
-
-    ref_chart = create_panel(ref_observations, 'REF Allele Observations')
-    alt_chart = create_panel(alt_observations, 'ALT Allele Observations')
-
-    return alt.vconcat(ref_chart, alt_chart)
+            
+            all_charts.append(chart)
+        
+        # Concatenate all metrics horizontally
+        return alt.hconcat(*all_charts).properties(
+            title='Observations: REF and ALT Comparison'
+        )
+    
+    # Create single combined visualization
+    combined = create_combined_panel(ref_observations, alt_observations)
+    
+    return combined
 
 # Main execution
 if __name__ == "__main__":
