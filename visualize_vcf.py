@@ -114,7 +114,7 @@ def visualize_allele_frequency_distribution(record, sample_name):
 def visualize_observations(record, sample_name):
     """
     Visualize observations from OBS field
-    REF and ALT side-by-side with normalized heights for comparison
+    All REF metrics first, then all ALT metrics, with shared y-axis
     """
     sample = record.samples[sample_name]
     obs = sample['OBS']
@@ -175,67 +175,70 @@ def visualize_observations(record, sample_name):
         else:
             ref_observations.append(obs_entry)
     
-    def create_combined_panel(ref_obs, alt_obs):
-        """Create side-by-side REF and ALT panels with normalized heights"""
+    # Calculate max count for shared y-axis
+    ref_total = sum(obs['count'] for obs in ref_observations) if ref_observations else 0
+    alt_total = sum(obs['count'] for obs in alt_observations) if alt_observations else 0
+    max_count = max(ref_total, alt_total)
+    
+    def create_panel(observations, allele_type):
+        """Create panel for one allele type (REF or ALT) with shared y-scale"""
+        
+        if not observations:
+            return alt.Chart(pd.DataFrame({'text': [f'No {allele_type} observations']})).mark_text(
+                text=f'No {allele_type} observations', size=16
+            ).encode().properties(width=600, height=400, title=f'{allele_type} Allele Observations')
         
         metrics = ['Posterior Odds', 'Edit Distance', 'Strand', 'Orientation', 
                   'Read Position', 'Softclip', 'Indel']
         
-        all_charts = []
+        all_data = []
+        for obs in observations:
+            obs_index = obs['obs_index']
+            count = obs['count']
+            
+            for metric in metrics:
+                category_value = obs[metric]
+                
+                all_data.append({
+                    'obs_index': obs_index,
+                    'Metric': metric,
+                    'Count': count,
+                    'Category': category_value
+                })
         
-        for metric in metrics:
-            # Prepare data for both REF and ALT
-            ref_data = []
-            alt_data = []
-            
-            if ref_obs:
-                for obs in ref_obs:
-                    ref_data.append({
-                        'obs_index': obs['obs_index'],
-                        'Allele': 'REF',
-                        'Count': obs['count'],
-                        'Category': obs[metric]
-                    })
-            
-            if alt_obs:
-                for obs in alt_obs:
-                    alt_data.append({
-                        'obs_index': obs['obs_index'],
-                        'Allele': 'ALT',
-                        'Count': obs['count'],
-                        'Category': obs[metric]
-                    })
-            
-            # Combine both
-            combined_data = ref_data + alt_data
-            df = pd.DataFrame(combined_data)
-            
-            if df.empty:
-                continue
-            
-            # Create chart with NORMALIZED stacking (same height for both)
-            chart = alt.Chart(df).mark_bar().encode(
-                x=alt.X('Allele:N', title=None),
-                y=alt.Y('Count:Q', title='Proportion', stack='normalize'),  # Changed to normalize
-                color=alt.Color('Category:N', 
-                              legend=alt.Legend(title=metric)),
-                order=alt.Order('obs_index:Q'),
-                tooltip=['Allele:N', 'Category:N', 'Count:Q']
-            ).properties(
-                width=150,
-                height=400,
-                title=metric
-            )
-            
-            all_charts.append(chart)
+        df = pd.DataFrame(all_data)
         
-        # Concatenate all metrics horizontally
-        return alt.hconcat(*all_charts).properties(
-            title='Observations: REF and ALT Comparison'
+        # Create stacked bar chart with SHARED y-axis scale
+        chart = alt.Chart(df).mark_bar().encode(
+            x=alt.X('Metric:N', title=None, axis=alt.Axis(labelAngle=-45)),
+            y=alt.Y('Count:Q', 
+                   title='Count', 
+                   stack='zero',
+                   scale=alt.Scale(domain=[0, max_count])),  # Shared scale
+            color=alt.Color('Category:N', 
+                          legend=alt.Legend(title='Category')),
+            order=alt.Order('obs_index:Q'),
+            tooltip=['Metric:N', 'Category:N', 'Count:Q']
+        ).properties(
+            title=f'{allele_type} Allele Observations',
+            width=600,
+            height=400
         )
+        
+        return chart
     
-    # Create single combined visualization
-    combined = create_combined_panel(ref_observations, alt_observations)
+    # Create REF panel
+    ref_chart = create_panel(ref_observations, 'REF')
+    
+    # Create ALT panel
+    alt_chart = create_panel(alt_observations, 'ALT')
+    
+    # Concatenate REF then ALT horizontally
+    combined = alt.hconcat(ref_chart, alt_chart).resolve_scale(
+        y='shared'  # Force shared y-axis
+    ).properties(
+        title='Observations: REF and ALT Comparison'
+    )
     
     return combined
 
