@@ -10,9 +10,7 @@ def phred_to_prob(phred_value):
         return 10 ** (-phred_value / 10)
 
 def visualize_event_probabilities(record):
-        """
-        Visualize event probabilities from INFO column (PROB_* fields)
-        """
+        """Visualize event probabilities from INFO column (PROB_* fields)"""
         prob_data = []
         for key, value in record.info.items():
                 if key.startswith('PROB_'):
@@ -32,7 +30,6 @@ def visualize_event_probabilities(record):
         print(df)
         print(f"Sum of probabilities: {df['Probability'].sum()}")
 
-        # Create bar plot WITHOUT log scale
         chart = alt.Chart(df).mark_bar().encode(
                 x=alt.X('Event:N', title='Event Type'),
                 y=alt.Y('Probability:Q', title='Probability'),
@@ -48,7 +45,6 @@ def visualize_event_probabilities(record):
 def visualize_allele_frequency_distribution(record, sample_name):
         """
         Visualize allele frequency distribution (AFD field)
-        ML estimate is layered on top of distribution points
         """
         sample = record.samples[sample_name]
 
@@ -114,7 +110,6 @@ def visualize_allele_frequency_distribution(record, sample_name):
 def visualize_observations(record, sample_name):
     """
     Visualize observations from OBS field
-    REF panel (left) + ALT panel (right), shared y-axis and ONE legend
     """
     sample = record.samples[sample_name]
     obs = sample['OBS']
@@ -157,7 +152,7 @@ def visualize_observations(record, sample_name):
             'count': count,
             'Posterior Odds': kr_names.get(kass, kass),
             'Strand': strand_map.get(rest[3], rest[3]),
-            'Read Position': read_pos_map.get(rest[5], rest[5]),  # Use the mapping
+            'Read Position': read_pos_map.get(rest[5], rest[5]), 
             'Orientation': orientation_map.get(rest[4], rest[4]),
             'Softclip': softclip_map.get(rest[6], rest[6]),
             'Indel': indel_map.get(rest[7], rest[7]),
@@ -216,7 +211,6 @@ def visualize_observations(record, sample_name):
             tooltip=['Metric', 'Category', 'Count']
         )
 
-        # Only show legends on first panel (REF)
         odds_layer = base.transform_filter(
             alt.datum.Metric == 'Posterior Odds'
         ).mark_bar(size=18).encode(
@@ -271,7 +265,6 @@ def visualize_observations(record, sample_name):
 )
 
 
-# Main execution
 if __name__ == "__main__":
         vcf_file = "examples/example.vcf"
         vcf = pysam.VariantFile(vcf_file)
@@ -282,17 +275,17 @@ if __name__ == "__main__":
         print(f"Processing record at {record.chrom}:{record.pos}")
         print(f"Sample: {sample_name}")
 
-        print("\nGenerating event probabilities chart...")
+        print("\nGenerating event probabilities chart")
         chart1 = visualize_event_probabilities(record)
         chart1.save('event_probabilities.html')
         print("Saved: event_probabilities.html")
 
-        print("\nGenerating allele frequency distribution chart...")
+        print("\nGenerating allele frequency distribution chart")
         chart2 = visualize_allele_frequency_distribution(record, sample_name)
         chart2.save('allele_frequency_distribution.html')
         print("Saved: allele_frequency_distribution.html")
 
-        print("\nGenerating observations chart...")
+        print("\nGenerating observations chart")
         chart3 = visualize_observations(record, sample_name)
         chart3.save('observations.html')
         print("Saved: observations.html")
