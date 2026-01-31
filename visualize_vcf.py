@@ -257,15 +257,18 @@ def visualize_observations(record, sample_name):
             title=f'{allele} Allele Observations'
         )
 
-    # REF shows legend, ALT does not
-    ref_chart = create_panel(ref_observations, 'REF', show_y_axis=True, show_legend=True)
-    alt_chart = create_panel(alt_observations, 'ALT', show_y_axis=False, show_legend=False)
+    ref_chart = create_panel(ref_observations, 'REF', show_y_axis=True, show_legend=False)
+    alt_chart = create_panel(alt_observations, 'ALT', show_y_axis=True, show_legend=True)
 
     return alt.hconcat(ref_chart, alt_chart, spacing=10).resolve_scale(
-        y='shared'
-    ).properties(
-        title='Observations: REF vs ALT'
-    )
+    y='shared'
+).configure_legend(
+    orient='right'
+).configure_view(
+    strokeWidth=0
+).configure_axis(
+    grid=False
+)
 
 
 # Main execution
