@@ -112,166 +112,160 @@ def visualize_allele_frequency_distribution(record, sample_name):
         return chart
 
 def visualize_observations(record, sample_name):
-        """
-        Visualize observations from OBS field
-        REF panel (left) + ALT panel (right), shared y-axis
-        """
-        sample = record.samples[sample_name]
-        obs = sample['OBS']
+    """
+    Visualize observations from OBS field
+    REF panel (left) + ALT panel (right), shared y-axis and ONE legend
+    """
+    sample = record.samples[sample_name]
+    obs = sample['OBS']
 
-        obs_string = obs[0] if isinstance(obs, (tuple, list)) and obs else obs
+    obs_string = obs[0] if isinstance(obs, (tuple, list)) and obs else obs
 
-        ref_observations = []
-        alt_observations = []
+    ref_observations = []
+    alt_observations = []
 
-        pattern = r'(\d+)([a-zA-Z]{2})(.{8})'
-        matches = re.findall(pattern, obs_string)
+    pattern = r'(\d+)([a-zA-Z]{2})(.{8})'
+    matches = re.findall(pattern, obs_string)
 
-        strand_map = {'+': 'Forward strand', '-': 'Reverse strand', '*': 'Both strands',}
-        orientation_map = {'>': 'F1R2 orientation','<': 'F2R1 orientation','*': 'Unknown orientation','!': 'Non-standard orientation',}
-        softclip_map = {'$': 'Soft clipped','.': 'No soft clipping',}
-        indel_map = {'*': 'Contains indel','.': 'No indel',}
-        odds_map = {
-        'N': 'No support',
-        'E': 'Equal support',
-        'B': 'Barely supports allele',
-        'P': 'Moderately supports allele',
-        'S': 'Strongly supports allele',
-        'V': 'Very strongly supports allele',
-        'n': 'No support (low mapping quality)',
-        'e': 'Equal support (low mapping quality)',
-        'b': 'Barely supports allele (low mapping quality)',
-        'p': 'Moderately supports allele (low mapping quality)',
-        's': 'Strongly supports allele (low mapping quality)',
-        'v': 'Very strongly supports allele (low mapping quality)',
+    strand_map = {'+': 'Forward strand', '-': 'Reverse strand', '*': 'Both strands',}
+    read_pos_map = {
+    '^': 'Most common position',
+    '*': 'Other position',
+    '.': 'Irrelevant position'
+}
+    orientation_map = {'>': 'F1R2 orientation','<': 'F2R1 orientation','*': 'Unknown orientation','!': 'Non-standard orientation',}
+    softclip_map = {'$': 'Soft clipped','.': 'No soft clipping',}
+    indel_map = {'*': 'Contains indel','.': 'No indel',}
+
+    for idx, match in enumerate(matches):
+        count = int(match[0])
+        odds_code = match[1]
+        rest = match[2]
+
+        allele_type = odds_code[0].upper()
+        kass = odds_code[1]
+
+        kr_names = {
+            'N': 'None', 'E': 'Equal', 'B': 'Barely',
+            'P': 'Positive', 'S': 'Strong', 'V': 'Very Strong',
+            'n': 'None', 'e': 'Equal', 'b': 'Barely',
+            'p': 'Positive', 's': 'Strong', 'v': 'Very Strong'
         }
-        readpos_map = {
-        '^': 'Most common read position',
-        '*': 'Other or irrelevant read position',
- }
 
-        for idx, match in enumerate(matches):
-                count = int(match[0])
-                odds_code = match[1]
-                rest = match[2]
+        obs_entry = {
+            'obs_index': idx,
+            'count': count,
+            'Posterior Odds': kr_names.get(kass, kass),
+            'Strand': strand_map.get(rest[3], rest[3]),
+            'Read Position': read_pos_map.get(rest[5], rest[5]),  # Use the mapping
+            'Orientation': orientation_map.get(rest[4], rest[4]),
+            'Softclip': softclip_map.get(rest[6], rest[6]),
+            'Indel': indel_map.get(rest[7], rest[7]),
+            'Edit Distance': int(rest[0]) if rest[0].isdigit() else 0
+        }
 
-                allele_type = odds_code[0].upper()
-                kass = odds_code[1]
+        if allele_type == 'A':
+            alt_observations.append(obs_entry)
+        else:
+            ref_observations.append(obs_entry)
 
-                kr_names = {
-                        'N': 'None', 'E': 'Equal', 'B': 'Barely',
-                        'P': 'Positive', 'S': 'Strong', 'V': 'Very Strong',
-                        'n': 'None', 'e': 'Equal', 'b': 'Barely',
-                        'p': 'Positive', 's': 'Strong', 'v': 'Very Strong'
-                }
+    metrics = [
+        'Posterior Odds',
+        'Strand',
+        'Read Position',
+        'Orientation',
+        'Softclip',
+        'Indel',
+        'Edit Distance'
+    ]
 
-                obs_entry = {
-                        'obs_index': idx,
-                        'count': count,
-                        'Posterior Odds': kr_names.get(kass, kass),
-                        'Strand': strand_map.get(rest[3], rest[3]),
-                        'Read Position': readpos_map.get(rest[5], 'Other or irrelevant read position'),
-                        'Orientation': orientation_map.get(rest[4], rest[4]),
-                        'Softclip': softclip_map.get(rest[6], rest[6]),
-                        'Indel': indel_map.get(rest[7], rest[7]),
-                        'Edit Distance': int(rest[0]) if rest[0].isdigit() else 0   # numeric for red scale
-                }
+    odds_order = ['Equal', 'Barely', 'Positive', 'Strong', 'Very Strong']
+    odds_colors = ['#999999', '#D4EFF7', '#AFDFEE', '#6CC5E0', '#2DACD2']
 
-                if allele_type == 'A':
-                        alt_observations.append(obs_entry)
-                else:
-                        ref_observations.append(obs_entry)
-
-        metrics = [
-                'Posterior Odds',
-                'Strand',
-                'Read Position',
-                'Orientation',
-                'Softclip',
-                'Indel',
-                'Edit Distance'
-        ]
-
-        odds_order = ['Equal', 'Barely', 'Positive', 'Strong', 'Very Strong']
-        odds_colors = ['#999999', '#D4EFF7', '#AFDFEE', '#6CC5E0', '#2DACD2']
-
-        max_count = max(
-                sum(o['count'] for o in ref_observations) or 0,
-                sum(o['count'] for o in alt_observations) or 0
-        )
-
-        def create_panel(observations, allele, show_y_axis=True):
-                rows = []
-                for obs in observations:
-                        for metric in metrics:
-                                rows.append({
-                                        'Metric': metric,
-                                        'Category': str(obs[metric]),
-                                        'Count': obs['count'],
-                                        'obs_index': obs['obs_index']
-                                })
-
-                df = pd.DataFrame(rows)
-
-                base = alt.Chart(df).encode(
-                        x=alt.X('Metric:N', sort=metrics, title=None),
-                        y=alt.Y(
-                                'Count:Q',
-                                stack='zero',
-                                scale=alt.Scale(domain=[0, max_count]),
-                                title='Count' if show_y_axis else None,
-                                axis=None if not show_y_axis else alt.Axis()
-                        ),
-                        order='obs_index:Q',
-                        tooltip=['Metric', 'Category', 'Count']
-                )
-
-                odds_layer = base.transform_filter(
-                        alt.datum.Metric == 'Posterior Odds'
-                ).mark_bar(size=20).encode(
-                        color=alt.Color(
-                                'Category:N',
-                                scale=alt.Scale(domain=odds_order, range=odds_colors),
-                                legend=alt.Legend(title='Posterior Odds')
-                        )
-                )
-
-                edit_layer = base.transform_filter(
-                        alt.datum.Metric == 'Edit Distance'
-                ).mark_bar(size=20).encode(
-                        color=alt.Color(
-                                'Category:Q',
-                                scale=alt.Scale(scheme='reds'),
-                                legend=alt.Legend(
-        title='Edit distance',
-        type='gradient',
-        gradientLength=40,   # small box
-        gradientThickness=8,
-        tickCount=0,
-        labelExpr="''"       # no labels
+    max_count = max(
+        sum(o['count'] for o in ref_observations) or 0,
+        sum(o['count'] for o in alt_observations) or 0
     )
-                )
-                )
 
-                other_layer = base.transform_filter(
-                        (alt.datum.Metric != 'Posterior Odds') &
-                        (alt.datum.Metric != 'Edit Distance')
-                ).mark_bar(size=20).encode(
-                        color=alt.Color('Category:N', legend=alt.Legend(title='Category'))
-                )
+    def create_panel(observations, allele, show_y_axis=True, show_legend=True):
+        rows = []
+        for obs in observations:
+            for metric in metrics:
+                rows.append({
+                    'Metric': metric,
+                    'Category': str(obs[metric]),
+                    'Count': obs['count'],
+                    'obs_index': obs['obs_index']
+                })
 
-                return (odds_layer + edit_layer + other_layer).properties(
-                        width=300,
-                        height=400,
-                        title=f'{allele} Allele Observations'
-                )
+        df = pd.DataFrame(rows)
 
-        ref_chart = create_panel(ref_observations, 'REF', show_y_axis=True)
-        alt_chart = create_panel(alt_observations, 'ALT', show_y_axis=False)
-
-        return alt.hconcat(ref_chart, alt_chart).resolve_scale(y='shared').properties(
-                title='Observations: REF vs ALT'
+        base = alt.Chart(df).encode(
+            x=alt.X('Metric:N', 
+                   sort=metrics, 
+                   title=None,
+                   scale=alt.Scale(paddingInner=0.005, paddingOuter=1)),
+            y=alt.Y(
+                'Count:Q',
+                stack='zero',
+                scale=alt.Scale(domain=[0, max_count]),
+                title='Count' if show_y_axis else None,
+                axis=None if not show_y_axis else alt.Axis()
+            ),
+            order='obs_index:Q',
+            tooltip=['Metric', 'Category', 'Count']
         )
+
+        # Only show legends on first panel (REF)
+        odds_layer = base.transform_filter(
+            alt.datum.Metric == 'Posterior Odds'
+        ).mark_bar(size=18).encode(
+            color=alt.Color(
+                'Category:N',
+                scale=alt.Scale(domain=odds_order, range=odds_colors),
+                legend=alt.Legend(title='Posterior Odds') if show_legend else None
+            )
+        )
+
+        edit_layer = base.transform_filter(
+            alt.datum.Metric == 'Edit Distance'
+        ).mark_bar(size=18).encode(
+            color=alt.Color(
+                'Category:Q',
+                scale=alt.Scale(scheme='reds'),
+                legend=alt.Legend(
+                    title='Edit distance',
+                    type='gradient',
+                    gradientLength=40,
+                    gradientThickness=8,
+                    tickCount=0,
+                    labelExpr="''"
+                ) if show_legend else None
+            )
+        )
+
+        other_layer = base.transform_filter(
+            (alt.datum.Metric != 'Posterior Odds') &
+            (alt.datum.Metric != 'Edit Distance')
+        ).mark_bar(size=18).encode(
+            color=alt.Color('Category:N', legend=alt.Legend(title='Category') if show_legend else None)
+        )
+
+        return (odds_layer + edit_layer + other_layer).properties(
+            width=220,
+            height=400,
+            title=f'{allele} Allele Observations'
+        )
+
+    # REF shows legend, ALT does not
+    ref_chart = create_panel(ref_observations, 'REF', show_y_axis=True, show_legend=True)
+    alt_chart = create_panel(alt_observations, 'ALT', show_y_axis=False, show_legend=False)
+
+    return alt.hconcat(ref_chart, alt_chart, spacing=10).resolve_scale(
+        y='shared'
+    ).properties(
+        title='Observations: REF vs ALT'
+    )
 
 
 # Main execution
