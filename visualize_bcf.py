@@ -266,7 +266,7 @@ def visualize_observations(record, sample_name):
 
 
 if __name__ == "__main__":
-        vcf_file = "examples/calls.bcf"  # Replace with your BCF/VCF file path
+        vcf_file = "examples/calls.bcf"  
         vcf = pysam.VariantFile(vcf_file)
 
         record = next(vcf)
